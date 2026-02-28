@@ -3,7 +3,7 @@ name: "タスク確認"
 schedule: "hourly"  # cron形式も可: "0 * * * *"
 channel: "1475880463800205315"  # #機能開発室
 mention: "1475431819565469706"  # エージェント
-prompt: "🎋 TASK確認"
+prompt: "🎋 TASK.mdを確認して、未着手タスクを順次実装してください。必ずGitHub Projectで進捗を追跡できるようにIssue番号をコミットメッセージに含めてください。"
 thread: true
 thread_name: "🔧 {date} タスク確認"
 enabled: true
