@@ -20,6 +20,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from discord.errors import HTTPException, Forbidden, NotFound
 import croniter
+from skills_utils import get_all_skills, get_skill_detail, format_skills_list, format_skill_detail
 
 # 強制フラッシュ
 sys.stdout.reconfigure(line_buffering=True)
@@ -667,6 +668,88 @@ async def cmd_streaks(interaction: discord.Interaction):
         )
 
     await interaction.response.send_message(embed=embed)
+
+
+# スキル管理コマンド
+class SkillsGroup(app_commands.Group):
+    """スキル関連コマンドグループ"""
+
+    @app_commands.command(name="list", description="スキル一覧を表示")
+    async def list_skills(self, interaction: discord.Interaction):
+        """スキル一覧表示"""
+        skills = get_all_skills()
+
+        if not skills:
+            await interaction.response.send_message("🎋 スキルが見つかりません")
+            return
+
+        embed = discord.Embed(
+            title="🎋 スキル一覧",
+            color=0xC41E3A
+        )
+
+        for skill in skills[:25]:  # Embedは最大25フィールド
+            name = skill.get("name", "unknown")
+            desc = skill.get("description", "")
+            if len(desc) > 80:
+                desc = desc[:77] + "..."
+
+            icons = ""
+            if skill.get("has_scripts"):
+                icons += "📜"
+            if skill.get("has_references"):
+                icons += "📚"
+
+            embed.add_field(
+                name=f"{name} {icons}",
+                value=desc if desc else "*説明なし*",
+                inline=False
+            )
+
+        embed.set_footer(text=f"合計: {len(skills)}スキル | /skills show <名前> で詳細表示")
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="show", description="スキルの詳細を表示")
+    @app_commands.describe(name="スキル名")
+    async def show_skill(self, interaction: discord.Interaction, name: str):
+        """スキル詳細表示"""
+        skill = get_skill_detail(name)
+
+        if not skill:
+            await interaction.response.send_message(f"❌ スキル '{name}' が見つかりません")
+            return
+
+        embed = discord.Embed(
+            title=f"🎋 {skill.get('name', 'unknown')}",
+            color=0xC41E3A
+        )
+
+        desc = skill.get("description", "")
+        if desc:
+            embed.description = desc
+
+        # スクリプト
+        scripts = skill.get("scripts", [])
+        if scripts:
+            scripts_str = "\n".join([f"`{s}`" for s in scripts[:10]])
+            if len(scripts) > 10:
+                scripts_str += f"\n... 他 {len(scripts) - 10}件"
+            embed.add_field(name="📜 Scripts", value=scripts_str, inline=False)
+
+        # 参考ファイル
+        refs = skill.get("references", [])
+        if refs:
+            refs_str = "\n".join([f"`{r}`" for r in refs[:10]])
+            if len(refs) > 10:
+                refs_str += f"\n... 他 {len(refs) - 10}件"
+            embed.add_field(name="📚 References", value=refs_str, inline=False)
+
+        await interaction.response.send_message(embed=embed)
+
+
+# コマンドグループを登録
+bot.tree.add_command(SkillsGroup(name="skills", description="スキル管理"))
 
 
 # Bot起動
