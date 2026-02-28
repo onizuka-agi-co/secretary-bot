@@ -1,5 +1,8 @@
 # 🎋 朱燈烏（Shutogarasu）- Secretary Bot
 
+[![README in Japanese](https://img.shields.io/badge/README-日本語-white?style=flat-square)](README.md)
+[![README in English](https://img.shields.io/badge/README-English-blue?style=flat-square)](README_EN.md)
+
 YAMLベースのDiscord定期通知Bot。スレッド作成、スラッシュコマンド対応。
 
 ## 機能
