@@ -1,0 +1,9 @@
+# 朝のアイデア提案（毎日 09:00）
+name: "朝のアイデア提案"
+schedule: "0 9 * * *"  # 毎日 09:00 JST
+channel: "1475861389984796702"  # #新規企画開発
+mention: "1475431819565469706"  # エージェント
+prompt: "💡 今日のアイデア提案をお願いします"
+thread: true
+thread_name: "🎋 {date} アイデア提案"
+enabled: true

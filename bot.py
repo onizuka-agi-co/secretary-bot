@@ -26,9 +26,9 @@ env_path = Path(__file__).parent / "config" / ".env"
 load_dotenv(env_path)
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-SCHEDULE_FILE = Path("/config/.openclaw/workspace/schedule-tasks.yaml")
 TZ = ZoneInfo("Asia/Tokyo")
 GUILD_ID = 1188045372526964796  # ONIZUKA Guild
+TASKS_DIR = Path(__file__).parent / "config" / "tasks"
 
 # Bot設定
 intents = discord.Intents.default()
@@ -40,13 +40,25 @@ executed_tasks: Dict[str, str] = {}
 
 
 def load_schedule() -> dict:
-    """YAMLファイルからスケジュールを読み込む"""
+    """tasksディレクトリ内の全YAMLファイルからタスクを読み込む"""
+    tasks = []
+    settings = {"timezone": "Asia/Tokyo", "check_interval": 60}
+
     try:
-        with open(SCHEDULE_FILE, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        if TASKS_DIR.exists():
+            for yaml_file in TASKS_DIR.glob("*.yaml"):
+                try:
+                    with open(yaml_file, "r", encoding="utf-8") as f:
+                        task = yaml.safe_load(f)
+                        if task and "name" in task:
+                            tasks.append(task)
+                            print(f"[DEBUG] Loaded task: {task.get('name')} from {yaml_file.name}", flush=True)
+                except Exception as e:
+                    print(f"[ERROR] Failed to load {yaml_file}: {e}", flush=True)
     except Exception as e:
-        print(f"[ERROR] Failed to load schedule: {e}", flush=True)
-        return {"tasks": [], "settings": {}}
+        print(f"[ERROR] Failed to load tasks: {e}", flush=True)
+
+    return {"tasks": tasks, "settings": settings}
 
 
 def should_execute(task: dict, now: datetime) -> bool:
@@ -90,7 +102,7 @@ async def on_ready():
     """起動時処理"""
     print(f"[INFO] 朱燈烏 Bot起動: {bot.user}", flush=True)
     print(f"[INFO] Bot ID: {bot.user.id}", flush=True)
-    print(f"[INFO] スケジュールファイル: {SCHEDULE_FILE}", flush=True)
+    print(f"[INFO] タスクディレクトリ: {TASKS_DIR}", flush=True)
 
     schedule = load_schedule()
     task_count = len([t for t in schedule.get("tasks", []) if t.get("enabled", True)])
@@ -198,7 +210,7 @@ async def cmd_status(interaction: discord.Interaction):
     embed.add_field(name="状態", value="✅ 稼働中", inline=True)
     embed.add_field(name="タスク数", value=f"{task_count}件", inline=True)
     embed.add_field(name="現在時刻", value=now, inline=True)
-    embed.add_field(name="スケジュールファイル", value=f"`{SCHEDULE_FILE}`", inline=False)
+    embed.add_field(name="タスクディレクトリ", value=f"`{TASKS_DIR}`", inline=False)
 
     await interaction.response.send_message(embed=embed)
 
@@ -282,7 +294,10 @@ async def cmd_add(
     prompt: str = ""
 ):
     """タスク追加"""
-    schedule_data = load_schedule()
+    # ファイル名を生成（タスク名から安全なファイル名を作成）
+    import re
+    safe_name = re.sub(r'[^\w\-]', '_', name.lower())
+    task_file = TASKS_DIR / f"{safe_name}.yaml"
 
     new_task = {
         "name": name,
@@ -293,15 +308,12 @@ async def cmd_add(
         "enabled": True
     }
 
-    if "tasks" not in schedule_data:
-        schedule_data["tasks"] = []
-    schedule_data["tasks"].append(new_task)
-
     try:
-        with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
-            yaml.dump(schedule_data, f, allow_unicode=True, default_flow_style=False)
+        TASKS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(task_file, "w", encoding="utf-8") as f:
+            yaml.dump(new_task, f, allow_unicode=True, default_flow_style=False)
 
-        msg = f"🎋 タスクを追加しました\n**{name}** (`{schedule}`)\nチャンネル: <#{channel}>"
+        msg = f"🎋 タスクを追加しました\n**{name}** (`{schedule}`)\nチャンネル: <#{channel}>\nファイル: `{task_file.name}`"
         if mention:
             msg += f"\nメンション: <@{mention}>"
         await interaction.response.send_message(msg)
@@ -309,22 +321,43 @@ async def cmd_add(
         await interaction.response.send_message(f"❌ 保存エラー: {e}")
 
 
+def find_task_file(name: str) -> Optional[Path]:
+    """タスク名からファイルを探す"""
+    import re
+    safe_name = re.sub(r'[^\w\-]', '_', name.lower())
+    
+    # 直接ファイル名で探す
+    task_file = TASKS_DIR / f"{safe_name}.yaml"
+    if task_file.exists():
+        return task_file
+    
+    # 全ファイルから探す
+    for yaml_file in TASKS_DIR.glob("*.yaml"):
+        try:
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                task = yaml.safe_load(f)
+                if task and task.get("name") == name:
+                    return yaml_file
+        except:
+            pass
+    return None
+
+
 @bot.tree.command(name="disable", description="タスクを無効化")
 @app_commands.describe(name="タスク名")
 async def cmd_disable(interaction: discord.Interaction, name: str):
     """タスク無効化"""
-    schedule_data = load_schedule()
-
-    for task in schedule_data.get("tasks", []):
-        if task.get("name") == name:
-            task["enabled"] = False
-            break
-    else:
+    task_file = find_task_file(name)
+    if not task_file:
         await interaction.response.send_message(f"❌ タスク '{name}' が見つかりません")
         return
 
-    with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
-        yaml.dump(schedule_data, f, allow_unicode=True, default_flow_style=False)
+    with open(task_file, "r", encoding="utf-8") as f:
+        task = yaml.safe_load(f)
+    
+    task["enabled"] = False
+    with open(task_file, "w", encoding="utf-8") as f:
+        yaml.dump(task, f, allow_unicode=True, default_flow_style=False)
 
     await interaction.response.send_message(f"🎋 タスク '{name}' を無効化しました")
 
@@ -333,18 +366,17 @@ async def cmd_disable(interaction: discord.Interaction, name: str):
 @app_commands.describe(name="タスク名")
 async def cmd_enable(interaction: discord.Interaction, name: str):
     """タスク有効化"""
-    schedule_data = load_schedule()
-
-    for task in schedule_data.get("tasks", []):
-        if task.get("name") == name:
-            task["enabled"] = True
-            break
-    else:
+    task_file = find_task_file(name)
+    if not task_file:
         await interaction.response.send_message(f"❌ タスク '{name}' が見つかりません")
         return
 
-    with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
-        yaml.dump(schedule_data, f, allow_unicode=True, default_flow_style=False)
+    with open(task_file, "r", encoding="utf-8") as f:
+        task = yaml.safe_load(f)
+    
+    task["enabled"] = True
+    with open(task_file, "w", encoding="utf-8") as f:
+        yaml.dump(task, f, allow_unicode=True, default_flow_style=False)
 
     await interaction.response.send_message(f"🎋 タスク '{name}' を有効化しました")
 

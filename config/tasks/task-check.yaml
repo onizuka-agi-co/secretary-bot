@@ -1,0 +1,9 @@
+# タスク確認（毎時）
+name: "タスク確認"
+schedule: "hourly"  # cron形式も可: "0 * * * *"
+channel: "1475880463800205315"  # #機能開発室
+mention: "1475431819565469706"  # エージェント
+prompt: "🎋 TASK確認"
+thread: true
+thread_name: "🔧 {date} タスク確認"
+enabled: true
