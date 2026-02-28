@@ -1,7 +1,18 @@
-# 🎋 朱燈烏（Shutogarasu）- Secretary Bot
+<p align="center">
+  <img src="assets/header.png" alt="AKARI Header" width="100%">
+</p>
 
-[![README in Japanese](https://img.shields.io/badge/README-日本語-white?style=flat-square)](README_JP.md)
-[![README in English](https://img.shields.io/badge/README-English-blue?style=flat-square)](README.md)
+<h1 align="center">🔥 AKARI</h1>
+
+<p align="center">
+  <strong>YAMLベースのDiscord定期通知Bot</strong><br>
+  自動スレッド作成・スラッシュコマンド対応
+</p>
+
+<p align="center">
+  <a href="README_JP.md"><img src="https://img.shields.io/badge/README-日本語-white?style=flat-square" alt="README in Japanese"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=flat-square" alt="README in English"></a>
+</p>
 
 > **YAMLベースのDiscord定期通知Bot** - 自動スレッド作成・スラッシュコマンド対応
 
