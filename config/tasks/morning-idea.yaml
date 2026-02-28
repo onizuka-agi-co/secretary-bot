@@ -3,7 +3,49 @@ name: "朝のアイデア提案"
 schedule: "0 9 * * *"  # 毎日 09:00 JST
 channel: "1475861389984796702"  # #新規企画開発
 mention: "1475431819565469706"  # エージェント
-prompt: "💡 今日のアイデア提案をお願いします"
+prompt: |
+  💡 **今日のアイデア提案**
+
+  **idea-dev スキル**を使用して、ONIZUKAのミッションに基づいたアイデアを提案してください。
+
+  ## 🎯 ONIZUKA ミッション
+  > 「AGIの知見をほどき、世界に届ける」
+
+  ## 📋 手順
+  1. `memory_search` で直近の議論・活動を確認
+  2. 以下の活動領域に基づいてアイデアを生成：
+     - 📜 @hAru_mAki_ch の投稿を深掘り・補足解説
+     - 📰 最新AGI論文の要約・解説
+     - 🔓 知見を整理して公開
+  3. スレッドでアイデアを提示し、議論を促す
+
+  ## 📝 アイデア形式
+  **【短期】**（1-3個）：数時間〜1日で完了
+  **【中期】**（1-2個）：1-2週間で完了
+  **【長期】**（1個）：1-3ヶ月で完了
+
+  ## 📋 GitHub Project へのタスク登録
+  **github-project スキル**を使用して、採用されたアイデアをタスクとして登録：
+  
+  ```
+  # タスク追加コマンド例
+  gh project item-add 1 --owner onizuka-agi-co \
+    --title "タスク名" \
+    --body "タスクの説明"
+  ```
+
+  **フィールド設定:**
+  - Status: `Backlog`（初期値）
+  - Priority: 短期=`P1` / 中期=`P2` / 長期=`P3`
+  - Size: 見積もりに応じて `XS`〜`XL`
+  - Start Date: 今日の日付
+  - Target Date: 期間に応じて設定
+
+  **Project URL:** https://github.com/orgs/onizuka-agi-co/projects/1
+
+  ## 💾 議論後の対応
+  - ユーザーが「保存して」→ `memory/docs/YYYY/MM/DD/` に保存
+  - ユーザーが「採用」→ GitHub Project にタスク登録
 thread: true
 thread_name: "🎋 {date} アイデア提案"
 enabled: true
