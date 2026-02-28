@@ -7,6 +7,7 @@ YAMLベース定期通知Bot - スラッシュコマンド対応
 import os
 import sys
 import yaml
+import json
 import asyncio
 import logging
 from datetime import datetime
@@ -54,6 +55,7 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 TZ = ZoneInfo("Asia/Tokyo")
 GUILD_ID = 1188045372526964796  # ONIZUKA Guild
 TASKS_DIR = Path(__file__).parent / "config" / "tasks"
+HISTORY_FILE = Path(__file__).parent / "config" / "history.json"
 
 # Bot設定
 intents = discord.Intents.default()
@@ -65,6 +67,45 @@ executed_tasks: Dict[str, str] = {}
 
 # エラーログ保存
 error_log_file = Path(__file__).parent / "logs" / "errors.log"
+
+# 履歴管理
+def load_history() -> dict:
+    """実行履歴を読み込む"""
+    try:
+        if HISTORY_FILE.exists():
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Failed to load history: {e}", flush=True)
+    return {"executions": []}
+
+
+def save_history(history: dict):
+    """実行履歴を保存"""
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # 最新100件のみ保持
+        history["executions"] = history["executions"][-100:]
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[ERROR] Failed to save history: {e}", flush=True)
+
+
+def log_execution(task_name: str, channel_id: int, success: bool, thread_id: int = None):
+    """タスク実行をログに記録"""
+    history = load_history()
+    entry = {
+        "task": task_name,
+        "channel": channel_id,
+        "thread": thread_id,
+        "success": success,
+        "timestamp": datetime.now(TZ).isoformat()
+    }
+    history["executions"].append(entry)
+    save_history(history)
+
+
 
 
 def log_error(error_type: str, task_name: str, error: Exception, context: str = ""):
@@ -533,6 +574,99 @@ async def cmd_errors(interaction: discord.Interaction, count: int = 5):
         await interaction.response.send_message(embed=embed, ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ ログ読み込みエラー: {e}", ephemeral=True)
+
+
+
+@bot.tree.command(name="history", description="実行履歴を表示")
+@app_commands.describe(limit="表示件数（最大20）")
+async def cmd_history(interaction: discord.Interaction, limit: int = 10):
+    """実行履歴表示"""
+    history = load_history()
+    executions = history.get("executions", [])
+
+    if not executions:
+        await interaction.response.send_message("🎋 実行履歴はありません")
+        return
+
+    # 最新の指定件数を取得
+    recent = executions[-limit:][::-1]
+
+    embed = discord.Embed(
+        title="🔔 実行履歴",
+        color=0xC41E3A
+    )
+
+    for entry in recent[:10]:  # 最大10件表示
+        task_name = entry.get("task", "unknown")
+        ts = entry.get("timestamp", "")
+        success = "✅" if entry.get("success") else "❌"
+        thread_info = " 🧵" if entry.get("thread") else ""
+
+        # タイムスタンプを読みやすく
+        try:
+            dt = datetime.fromisoformat(ts)
+            time_str = dt.strftime("%m/%d %H:%M")
+        except:
+            time_str = ts[:16] if len(ts) > 16 else ts
+
+        embed.add_field(
+            name=f"{success} {task_name}{thread_info}",
+            value=f"📅 {time_str}",
+            inline=False
+        )
+
+    if len(recent) > 10:
+        embed.set_footer(text=f"...他 {len(recent) - 10} 件")
+
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="streaks", description="タスク別の実行統計を表示")
+async def cmd_streaks(interaction: discord.Interaction):
+    """タスク別統計表示"""
+    history = load_history()
+    executions = history.get("executions", [])
+
+    if not executions:
+        await interaction.response.send_message("🎋 実行履歴はありません")
+        return
+
+    # タスク別に集計
+    task_stats = {}
+    for entry in executions:
+        task_name = entry.get("task", "unknown")
+        if task_name not in task_stats:
+            task_stats[task_name] = {"total": 0, "success": 0, "last": None}
+        task_stats[task_name]["total"] += 1
+        if entry.get("success"):
+            task_stats[task_name]["success"] += 1
+        task_stats[task_name]["last"] = entry.get("timestamp")
+
+    embed = discord.Embed(
+        title="📊 タスク統計",
+        color=0xC41E3A
+    )
+
+    for task_name, stats in sorted(task_stats.items(), key=lambda x: x[1]["total"], reverse=True)[:10]:
+        total = stats["total"]
+        success = stats["success"]
+        rate = (success / total * 100) if total > 0 else 0
+
+        last = stats["last"]
+        try:
+            dt = datetime.fromisoformat(last)
+            last_str = dt.strftime("%m/%d %H:%M")
+        except:
+            last_str = "N/A"
+
+        embed.add_field(
+            name=f"📌 {task_name}",
+            value=f"実行: {total}回 | 成功率: {rate:.0f}%
+最終: {last_str}",
+            inline=False
+        )
+
+    await interaction.response.send_message(embed=embed)
 
 
 # Bot起動
