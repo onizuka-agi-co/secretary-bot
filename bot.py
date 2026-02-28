@@ -7,6 +7,8 @@ YAMLベース定期通知Bot - スラッシュコマンド対応
 import os
 import sys
 import yaml
+import asyncio
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -15,11 +17,34 @@ from dotenv import load_dotenv
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from discord.errors import HTTPException, Forbidden, NotFound
 import croniter
 
 # 強制フラッシュ
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
+
+# ロギング設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# エラー種別定義
+class ErrorTypes:
+    NETWORK = "NETWORK_ERROR"
+    RATE_LIMIT = "RATE_LIMIT"
+    YAML_PARSE = "YAML_PARSE_ERROR"
+    DISCORD_API = "DISCORD_API_ERROR"
+    UNKNOWN = "UNKNOWN_ERROR"
+
+# リトライ設定
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # seconds
 
 # 設定読み込み
 env_path = Path(__file__).parent / "config" / ".env"
@@ -38,6 +63,25 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 実行済みタスク管理
 executed_tasks: Dict[str, str] = {}
 
+# エラーログ保存
+error_log_file = Path(__file__).parent / "logs" / "errors.log"
+
+
+def log_error(error_type: str, task_name: str, error: Exception, context: str = ""):
+    """エラーをログに記録"""
+    error_dir = error_log_file.parent
+    error_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+    error_msg = f"[{timestamp}] [{error_type}] Task: {task_name} | Error: {type(error).__name__}: {error}"
+    if context:
+        error_msg += f" | Context: {context}"
+    
+    logger.error(error_msg)
+    
+    with open(error_log_file, "a", encoding="utf-8") as f:
+        f.write(error_msg + "\n")
+
 
 def load_schedule() -> dict:
     """tasksディレクトリ内の全YAMLファイルからタスクを読み込む"""
@@ -52,11 +96,13 @@ def load_schedule() -> dict:
                         task = yaml.safe_load(f)
                         if task and "name" in task:
                             tasks.append(task)
-                            print(f"[DEBUG] Loaded task: {task.get('name')} from {yaml_file.name}", flush=True)
+                            logger.debug(f"Loaded task: {task.get('name')} from {yaml_file.name}")
+                except yaml.YAMLError as e:
+                    log_error(ErrorTypes.YAML_PARSE, yaml_file.stem, e, "YAML syntax error")
                 except Exception as e:
-                    print(f"[ERROR] Failed to load {yaml_file}: {e}", flush=True)
+                    log_error(ErrorTypes.UNKNOWN, yaml_file.stem, e, "Failed to load task file")
     except Exception as e:
-        print(f"[ERROR] Failed to load tasks: {e}", flush=True)
+        log_error(ErrorTypes.UNKNOWN, "scheduler", e, "Failed to load tasks directory")
 
     return {"tasks": tasks, "settings": settings}
 
@@ -83,8 +129,8 @@ def should_execute(task: dict, now: datetime) -> bool:
             prev_run.day == now.day and prev_run.hour == now.hour and prev_run.minute == now.minute):
             executed_tasks[task_name] = time_key
             return True
-    except Exception as e:
-        print(f"[ERROR] Invalid cron: {schedule} - {e}", flush=True)
+    except (ValueError, croniter.CroniterBadCronError) as e:
+        log_error(ErrorTypes.YAML_PARSE, task_name, e, f"Invalid cron: {schedule}")
 
     return False
 
@@ -92,37 +138,47 @@ def should_execute(task: dict, now: datetime) -> bool:
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     """インタラクション受信ログ"""
-    print(f"[DEBUG] Interaction received: {interaction.type} - {interaction.data}", flush=True)
-    # デフォルトの処理を継続
+    logger.debug(f"Interaction received: {interaction.type} - {interaction.data}")
     await bot.process_application_commands(interaction)
+
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    """グローバルエラーハンドラ"""
+    logger.exception(f"Unhandled error in event {event}")
 
 
 @bot.event
 async def on_ready():
     """起動時処理"""
-    print(f"[INFO] 朱燈烏 Bot起動: {bot.user}", flush=True)
-    print(f"[INFO] Bot ID: {bot.user.id}", flush=True)
-    print(f"[INFO] タスクディレクトリ: {TASKS_DIR}", flush=True)
+    logger.info(f"朱燈烏 Bot起動: {bot.user}")
+    logger.info(f"Bot ID: {bot.user.id}")
+    logger.info(f"タスクディレクトリ: {TASKS_DIR}")
 
     schedule = load_schedule()
     task_count = len([t for t in schedule.get("tasks", []) if t.get("enabled", True)])
-    print(f"[INFO] 有効なタスク数: {task_count}", flush=True)
+    logger.info(f"有効なタスク数: {task_count}")
 
     # スラッシュコマンド同期（Guild固有で即座に反映）
     try:
         guild = discord.Object(id=GUILD_ID)
         bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)
-        print(f"[INFO] Synced {len(synced)} command(s) to guild {GUILD_ID}", flush=True)
+        logger.info(f"Synced {len(synced)} command(s) to guild {GUILD_ID}")
+    except HTTPException as e:
+        log_error(ErrorTypes.DISCORD_API, "command_sync", e, f"Status: {e.status}")
     except Exception as e:
-        print(f"[ERROR] Failed to sync commands: {e}", flush=True)
+        log_error(ErrorTypes.UNKNOWN, "command_sync", e)
 
     # 起動通知
     channel_id = int(os.getenv("CHANNEL_TASK", "0"))
     if channel_id:
-        channel = bot.get_channel(channel_id)
-        if channel:
-            await channel.send(f"🎋 朱燈烏起動しました\n📝 スケジュールタスク: {task_count}件")
+        try:
+            channel = bot.get_channel(channel_id)
+            if channel:
+                await channel.send(f"🎋 朱燈烏起動しました\n📝 スケジュールタスク: {task_count}件")
+        except Exception as e:
+            log_error(ErrorTypes.DISCORD_API, "startup_notification", e)
 
     # 定期チェック開始
     schedule_check_loop.start()
@@ -138,7 +194,45 @@ async def schedule_check_loop():
         if not task.get("enabled", True):
             continue
         if should_execute(task, now):
-            await execute_task(task, now)
+            await execute_task_with_retry(task, now)
+
+
+async def execute_task_with_retry(task: dict, now: datetime, retry_count: int = 0):
+    """タスクをリトライ付きで実行"""
+    task_name = task.get("name", "unnamed")
+    
+    try:
+        await execute_task(task, now)
+    except HTTPException as e:
+        if e.status == 429:  # Rate limit
+            log_error(ErrorTypes.RATE_LIMIT, task_name, e, f"Retry: {retry_count}")
+            if retry_count < MAX_RETRIES:
+                retry_after = float(e.response.headers.get("Retry-After", RETRY_DELAY))
+                logger.warning(f"Rate limited, retrying in {retry_after}s...")
+                await asyncio.sleep(retry_after)
+                await execute_task_with_retry(task, now, retry_count + 1)
+            else:
+                log_error(ErrorTypes.RATE_LIMIT, task_name, e, "Max retries exceeded")
+        elif e.status >= 500:  # Server error
+            log_error(ErrorTypes.NETWORK, task_name, e, f"Server error, retry: {retry_count}")
+            if retry_count < MAX_RETRIES:
+                await asyncio.sleep(RETRY_DELAY * (retry_count + 1))
+                await execute_task_with_retry(task, now, retry_count + 1)
+            else:
+                log_error(ErrorTypes.NETWORK, task_name, e, "Max retries exceeded")
+        else:
+            log_error(ErrorTypes.DISCORD_API, task_name, e, f"HTTP {e.status}")
+    except Forbidden as e:
+        log_error(ErrorTypes.DISCORD_API, task_name, e, "Permission denied")
+    except NotFound as e:
+        log_error(ErrorTypes.DISCORD_API, task_name, e, "Resource not found")
+    except asyncio.TimeoutError as e:
+        log_error(ErrorTypes.NETWORK, task_name, e, f"Timeout, retry: {retry_count}")
+        if retry_count < MAX_RETRIES:
+            await asyncio.sleep(RETRY_DELAY)
+            await execute_task_with_retry(task, now, retry_count + 1)
+    except Exception as e:
+        log_error(ErrorTypes.UNKNOWN, task_name, e)
 
 
 async def execute_task(task: dict, now: datetime):
@@ -152,7 +246,7 @@ async def execute_task(task: dict, now: datetime):
 
     channel = bot.get_channel(channel_id)
     if not channel:
-        print(f"[ERROR] Channel not found: {channel_id}", flush=True)
+        log_error(ErrorTypes.DISCORD_API, task_name, Exception(f"Channel not found: {channel_id}"), "")
         return
 
     # メッセージ構築
@@ -163,30 +257,27 @@ async def execute_task(task: dict, now: datetime):
         message_parts.append(prompt)
     message = " ".join(message_parts)
 
-    try:
-        if use_thread:
-            # スレッド名のプレースホルダーを置換
-            thread_name = thread_name_template
-            thread_name = thread_name.replace("{date}", now.strftime("%Y-%m-%d"))
-            thread_name = thread_name.replace("{time}", now.strftime("%H:%M"))
-            thread_name = thread_name.replace("{name}", task_name)
+    if use_thread:
+        # スレッド名のプレースホルダーを置換
+        thread_name = thread_name_template
+        thread_name = thread_name.replace("{date}", now.strftime("%Y-%m-%d"))
+        thread_name = thread_name.replace("{time}", now.strftime("%H:%M"))
+        thread_name = thread_name.replace("{name}", task_name)
 
-            # スレッドを作成
-            thread = await channel.create_thread(
-                name=thread_name,
-                type=discord.ChannelType.public_thread,
-                auto_archive_duration=1440  # 1日でアーカイブ
-            )
+        # スレッドを作成
+        thread = await channel.create_thread(
+            name=thread_name,
+            type=discord.ChannelType.public_thread,
+            auto_archive_duration=1440  # 1日でアーカイブ
+        )
 
-            # スレッド内でメッセージ送信
-            await thread.send(message)
-            print(f"[INFO] Task executed in thread: {task_name} at {now:%Y-%m-%d %H:%M}", flush=True)
-        else:
-            # 通常のチャンネル送信
-            await channel.send(message)
-            print(f"[INFO] Task executed: {task_name} at {now:%Y-%m-%d %H:%M}", flush=True)
-    except Exception as e:
-        print(f"[ERROR] Failed to execute task: {e}", flush=True)
+        # スレッド内でメッセージ送信
+        await thread.send(message)
+        logger.info(f"Task executed in thread: {task_name} at {now:%Y-%m-%d %H:%M}")
+    else:
+        # 通常のチャンネル送信
+        await channel.send(message)
+        logger.info(f"Task executed: {task_name} at {now:%Y-%m-%d %H:%M}")
 
 
 @schedule_check_loop.before_loop
@@ -317,7 +408,11 @@ async def cmd_add(
         if mention:
             msg += f"\nメンション: <@{mention}>"
         await interaction.response.send_message(msg)
+    except yaml.YAMLError as e:
+        log_error(ErrorTypes.YAML_PARSE, name, e, "Failed to serialize task")
+        await interaction.response.send_message(f"❌ YAML保存エラー: {e}")
     except Exception as e:
+        log_error(ErrorTypes.UNKNOWN, name, e, "Failed to save task")
         await interaction.response.send_message(f"❌ 保存エラー: {e}")
 
 
@@ -352,14 +447,18 @@ async def cmd_disable(interaction: discord.Interaction, name: str):
         await interaction.response.send_message(f"❌ タスク '{name}' が見つかりません")
         return
 
-    with open(task_file, "r", encoding="utf-8") as f:
-        task = yaml.safe_load(f)
-    
-    task["enabled"] = False
-    with open(task_file, "w", encoding="utf-8") as f:
-        yaml.dump(task, f, allow_unicode=True, default_flow_style=False)
+    try:
+        with open(task_file, "r", encoding="utf-8") as f:
+            task = yaml.safe_load(f)
+        
+        task["enabled"] = False
+        with open(task_file, "w", encoding="utf-8") as f:
+            yaml.dump(task, f, allow_unicode=True, default_flow_style=False)
 
-    await interaction.response.send_message(f"🎋 タスク '{name}' を無効化しました")
+        await interaction.response.send_message(f"🎋 タスク '{name}' を無効化しました")
+    except Exception as e:
+        log_error(ErrorTypes.UNKNOWN, name, e, "Failed to disable task")
+        await interaction.response.send_message(f"❌ エラー: {e}")
 
 
 @bot.tree.command(name="enable", description="タスクを有効化")
@@ -371,14 +470,18 @@ async def cmd_enable(interaction: discord.Interaction, name: str):
         await interaction.response.send_message(f"❌ タスク '{name}' が見つかりません")
         return
 
-    with open(task_file, "r", encoding="utf-8") as f:
-        task = yaml.safe_load(f)
-    
-    task["enabled"] = True
-    with open(task_file, "w", encoding="utf-8") as f:
-        yaml.dump(task, f, allow_unicode=True, default_flow_style=False)
+    try:
+        with open(task_file, "r", encoding="utf-8") as f:
+            task = yaml.safe_load(f)
+        
+        task["enabled"] = True
+        with open(task_file, "w", encoding="utf-8") as f:
+            yaml.dump(task, f, allow_unicode=True, default_flow_style=False)
 
-    await interaction.response.send_message(f"🎋 タスク '{name}' を有効化しました")
+        await interaction.response.send_message(f"🎋 タスク '{name}' を有効化しました")
+    except Exception as e:
+        log_error(ErrorTypes.UNKNOWN, name, e, "Failed to enable task")
+        await interaction.response.send_message(f"❌ エラー: {e}")
 
 
 @bot.tree.command(name="test", description="タスクをテスト実行")
@@ -391,13 +494,48 @@ async def cmd_test(interaction: discord.Interaction, name: str):
         if task.get("name") == name:
             await interaction.response.send_message(f"🧪 タスク '{name}' をテスト実行中...")
             now = datetime.now(TZ)
-            await execute_task(task, now)
+            await execute_task_with_retry(task, now)
             return
 
     await interaction.response.send_message(f"❌ タスク '{name}' が見つかりません")
 
 
+@bot.tree.command(name="errors", description="最近のエラーログを表示")
+@app_commands.describe(count="表示するエラー数（デフォルト: 5）")
+async def cmd_errors(interaction: discord.Interaction, count: int = 5):
+    """エラーログ表示"""
+    if not error_log_file.exists():
+        await interaction.response.send_message("🎋 エラーログはありません")
+        return
+
+    try:
+        with open(error_log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        recent_errors = lines[-count:] if len(lines) > count else lines
+        
+        if not recent_errors:
+            await interaction.response.send_message("🎋 エラーログはありません")
+            return
+        
+        embed = discord.Embed(
+            title="⚠️ 最近のエラーログ",
+            color=0xFF6B6B
+        )
+        
+        for line in recent_errors[:10]:  # 最大10件
+            line = line.strip()
+            if line:
+                # 長い行は短縮
+                display = line if len(line) <= 100 else line[:97] + "..."
+                embed.add_field(name="━━━", value=f"`{display}`", inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ ログ読み込みエラー: {e}", ephemeral=True)
+
+
 # Bot起動
 if __name__ == "__main__":
-    print("[INFO] Bot起動中...", flush=True)
+    logger.info("Bot起動中...")
     bot.run(TOKEN)
