@@ -1,0 +1,36 @@
+# Schedule Tasks - 定期実行タスク定義
+# Botがこのファイルを読み込んでスケジュール実行する
+
+tasks:
+  # タスク確認（毎時）
+  - name: "タスク確認"
+    schedule: "hourly"  # cron形式も可: "0 * * * *"
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"  # エージェント
+    prompt: "🎋 TASK確認"
+    thread: true  # スレッドを作成
+    thread_name: "🔧 {date} タスク確認"  # {date}, {time}, {name} 使用可能
+    enabled: true
+
+  # 朝のアイデア提案（毎日 09:00）
+  - name: "朝のアイデア提案"
+    schedule: "0 9 * * *"  # 毎日 09:00 JST
+    channel: "1475861389984796702"  # #新規企画開発
+    mention: "1475431819565469706"  # エージェント
+    prompt: "💡 今日のアイデア提案をお願いします"
+    thread: true
+    thread_name: "🎋 {date} アイデア提案"
+    enabled: true
+
+  # 夜の振り返り（毎日 21:00）
+  - name: "夜の振り返り"
+    schedule: "0 21 * * *"  # 毎日 21:00 JST
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1153319182486741085"  # Maki
+    prompt: "📊 本日の進捗をまとめてください"
+    enabled: true  # スレッドなし
+
+# 設定
+settings:
+  timezone: "Asia/Tokyo"
+  check_interval: 60  # 秒単位でチェック間隔

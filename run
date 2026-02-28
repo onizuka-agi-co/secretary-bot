@@ -1,0 +1,19 @@
+#!/bin/bash
+# Secretary Bot - 朱燈烏 起動スクリプト
+
+# 環境変数読み込み
+set -a
+source /config/s6-services/secretary-bot-shutogarasu/config/.env 2>/dev/null || true
+set +a
+
+# ログ出力先
+mkdir -p /config/.local/state/futodama
+exec >> /config/.local/state/futodama/secretary-bot-shutogarasu.log 2>&1
+
+echo "[$(date)] Starting secretary-bot-shutogarasu"
+
+# 作業ディレクトリ
+cd /config/s6-services/secretary-bot-shutogarasu
+
+# Bot起動
+exec /usr/bin/python3 bot.py

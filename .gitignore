@@ -1,0 +1,13 @@
+# Environment
+.env
+__pycache__/
+*.pyc
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
