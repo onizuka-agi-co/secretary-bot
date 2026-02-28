@@ -1,61 +1,61 @@
 # 🎋 朱燈烏（Shutogarasu）- Secretary Bot
 
-[![README in Japanese](https://img.shields.io/badge/README-日本語-white?style=flat-square)](README.md)
-[![README in English](https://img.shields.io/badge/README-English-blue?style=flat-square)](README_EN.md)
+[![README in Japanese](https://img.shields.io/badge/README-日本語-white?style=flat-square)](README_JP.md)
+[![README in English](https://img.shields.io/badge/README-English-blue?style=flat-square)](README.md)
 
-YAMLベースのDiscord定期通知Bot。スレッド作成、スラッシュコマンド対応。
+A YAML-based Discord periodic notification bot with thread creation and slash command support.
 
-## 機能
+## Features
 
-- 📅 **YAMLベースのスケジュール管理** - cron形式または`hourly`でタスク定義
-- 🧵 **スレッド自動作成** - オプションでタスク実行時にスレッドを作成
-- 💬 **スラッシュコマンド** - `/status`, `/tasks`, `/add`, `/test` など
-- 🔄 **ホットリロード** - YAMLファイルを編集して即座に反映
+- 📅 **YAML-based Schedule Management** - Define tasks using cron format or `hourly`
+- 🧵 **Automatic Thread Creation** - Optionally create threads when executing tasks
+- 💬 **Slash Commands** - `/status`, `/tasks`, `/add`, `/test`, and more
+- 🔄 **Hot Reload** - Changes to YAML files are reflected immediately
 
-## セットアップ
+## Setup
 
-### 1. 依存関係インストール
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 環境変数設定
+### 2. Configure Environment Variables
 
 ```bash
 cp config/.env.example config/.env
-# .envを編集してBotトークンを設定
+# Edit .env and set your bot token
 ```
 
-### 3. Bot起動
+### 3. Start the Bot
 
 ```bash
 python3 bot.py
 ```
 
-## スラッシュコマンド
+## Slash Commands
 
-| コマンド | 説明 |
-|---------|------|
-| `/status` | Botのステータス確認 |
-| `/tasks` | タスク一覧表示 |
-| `/reload` | スケジュール再読み込み |
-| `/add` | 新しいタスク追加 |
-| `/enable` | タスク有効化 |
-| `/disable` | タスク無効化 |
-| `/test` | タスクテスト実行 |
+| Command | Description |
+|---------|-------------|
+| `/status` | Check bot status |
+| `/tasks` | Display task list |
+| `/reload` | Reload schedule |
+| `/add` | Add a new task |
+| `/enable` | Enable a task |
+| `/disable` | Disable a task |
+| `/test` | Test run a task |
 
-## YAML設定例
+## YAML Configuration Example
 
 ```yaml
 tasks:
-  - name: "タスク確認"
+  - name: "Task Check"
     schedule: "hourly"
     channel: "1475880463800205315"
     mention: "1475431819565469706"
-    prompt: "🎋 TASK確認"
+    prompt: "🎋 TASK Check"
     thread: true
-    thread_name: "🔧 {date} タスク確認"
+    thread_name: "🔧 {date} Task Check"
     enabled: true
 
 settings:
@@ -63,12 +63,23 @@ settings:
   check_interval: 60
 ```
 
-### プレースホルダー
+### Placeholders
 
-- `{date}` - 日付 (YYYY-MM-DD)
-- `{time}` - 時刻 (HH:MM)
-- `{name}` - タスク名
+- `{date}` - Date (YYYY-MM-DD)
+- `{time}` - Time (HH:MM)
+- `{name}` - Task name
 
-## ライセンス
+## Task File Structure
+
+Each task is stored as an individual YAML file in `config/tasks/`:
+
+```
+config/tasks/
+├── task-check.yaml       # Hourly task check
+├── morning-idea.yaml     # Daily morning idea proposal (09:00)
+└── evening-review.yaml   # Daily evening review (21:00)
+```
+
+## License
 
 MIT
