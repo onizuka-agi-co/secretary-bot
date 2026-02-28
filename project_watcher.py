@@ -79,7 +79,12 @@ class ProjectWatcher:
         
         return projects
 
-    async def create_project_channel(self, project_name: str) -> Optional[discord.TextChannel]:
+    async def create_project_channel(
+        self,
+        project_name: str,
+        project_path: Optional[Path] = None,
+        github_url: Optional[str] = None,
+    ) -> Optional[discord.TextChannel]:
         """プロジェクト用のDiscordチャンネルを作成"""
         guild = self.bot.get_guild(self.guild_id)
         if not guild:
@@ -110,11 +115,18 @@ class ProjectWatcher:
                 reason=f"Auto-created for project: {project_name}",
             )
 
-            # ウェルカムメッセージ
-            await channel.send(
-                f"📂 **{project_name}** プロジェクトチャンネルを作成しました！\n"
-                f"ここでプロジェクトの議論や開発を行ってください。"
-            )
+            # ウェルカムメッセージ（パス情報・GitHub URL追加）
+            welcome_msg = f"📂 **{project_name}** プロジェクトチャンネルを作成しました！\n\n"
+            
+            if project_path:
+                welcome_msg += f"📁 **パス:** `{project_path}`\n"
+            
+            if github_url:
+                welcome_msg += f"🐙 **GitHub:** {github_url}\n"
+            
+            welcome_msg += "\nここでプロジェクトの議論や開発を行ってください。"
+            
+            await channel.send(welcome_msg)
 
             logger.info(f"Created channel: {channel_name}")
             return channel
@@ -133,12 +145,121 @@ class ProjectWatcher:
 
         for project_name in new_projects:
             logger.info(f"New project detected: {project_name}")
-            channel = await self.create_project_channel(project_name)
+            project_path = self.projects_dir / project_name
+            channel = await self.create_project_channel(
+                project_name,
+                project_path=project_path,
+            )
             if channel:
                 self.known_projects.add(project_name)
         
         if new_projects:
             self.save_state()
+
+    async def create_channels_for_all_projects(
+        self,
+        github_org: Optional[str] = "onizuka-agi-co",
+    ) -> Dict[str, Optional[discord.TextChannel]]:
+        """既存の全プロジェクトフォルダにチャンネルを作成
+        
+        Args:
+            github_org: GitHub組織名（GitHub URL生成用）
+        
+        Returns:
+            作成結果の辞書 {project_name: channel}
+        """
+        results = {}
+        current_projects = self.scan_projects()
+        
+        logger.info(f"Creating channels for {len(current_projects)} projects...")
+        
+        for project_name in sorted(current_projects):
+            project_path = self.projects_dir / project_name
+            
+            # GitHub URL生成
+            github_url = None
+            if github_org:
+                github_url = f"https://github.com/{github_org}/{project_name}"
+            
+            channel = await self.create_project_channel(
+                project_name,
+                project_path=project_path,
+                github_url=github_url,
+            )
+            
+            results[project_name] = channel
+            
+            if channel:
+                self.known_projects.add(project_name)
+                # レート制限対策
+                await asyncio.sleep(1)
+        
+        self.save_state()
+        logger.info(f"Created channels for {len([c for c in results.values() if c])} projects")
+        
+        return results
+    
+    async def sync_with_github_project(
+        self,
+        project_number: int,
+        github_org: str = "onizuka-agi-co",
+    ) -> List[str]:
+        """GitHub Projectと同期してチャンネルを作成
+        
+        Args:
+            project_number: GitHub Project番号
+            github_org: GitHub組織名
+        
+        Returns:
+            作成されたチャンネル名のリスト
+        """
+        import subprocess
+        
+        created_channels = []
+        
+        try:
+            # GitHub Projectからアイテム一覧を取得
+            result = subprocess.run(
+                ["gh", "project", "item-list", str(project_number), 
+                 "--owner", github_org, "--format", "json"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            
+            items = json.loads(result.stdout).get("items", [])
+            
+            for item in items:
+                # リポジトリ付きのIssueのみ処理
+                repo_url = item.get("repository")
+                if repo_url:
+                    # リポジトリ名を抽出
+                    repo_name = repo_url.split("/")[-1]
+                    
+                    if repo_name not in self.known_projects:
+                        project_path = self.projects_dir / repo_name
+                        github_url = f"https://github.com/{github_org}/{repo_name}"
+                        
+                        channel = await self.create_project_channel(
+                            repo_name,
+                            project_path=project_path,
+                            github_url=github_url,
+                        )
+                        
+                        if channel:
+                            created_channels.append(channel.name)
+                            self.known_projects.add(repo_name)
+                            await asyncio.sleep(1)
+            
+            self.save_state()
+            logger.info(f"Synced with GitHub Project, created {len(created_channels)} channels")
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to sync with GitHub Project: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse GitHub Project response: {e}")
+        
+        return created_channels
 
     async def start(self):
         """監視を開始"""
@@ -171,9 +292,37 @@ async def list_watched_projects(watcher: ProjectWatcher) -> List[str]:
 
 async def manually_create_channel(watcher: ProjectWatcher, project_name: str) -> Optional[str]:
     """手動でチャンネルを作成"""
-    channel = await watcher.create_project_channel(project_name)
+    project_path = watcher.projects_dir / project_name
+    channel = await watcher.create_project_channel(
+        project_name,
+        project_path=project_path,
+    )
     if channel:
         watcher.known_projects.add(project_name)
         watcher.save_state()
         return channel.name
     return None
+
+
+async def create_all_project_channels(
+    watcher: ProjectWatcher,
+    github_org: Optional[str] = "onizuka-agi-co",
+) -> Dict[str, Optional[str]]:
+    """全プロジェクトのチャンネルを作成（コマンド用）"""
+    results = await watcher.create_channels_for_all_projects(github_org=github_org)
+    return {
+        name: channel.name if channel else None
+        for name, channel in results.items()
+    }
+
+
+async def sync_github_project(
+    watcher: ProjectWatcher,
+    project_number: int,
+    github_org: str = "onizuka-agi-co",
+) -> List[str]:
+    """GitHub Projectと同期（コマンド用）"""
+    return await watcher.sync_with_github_project(
+        project_number=project_number,
+        github_org=github_org,
+    )
