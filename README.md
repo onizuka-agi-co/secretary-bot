@@ -3,6 +3,8 @@
 [![README in Japanese](https://img.shields.io/badge/README-日本語-white?style=flat-square)](README_JP.md)
 [![README in English](https://img.shields.io/badge/README-English-blue?style=flat-square)](README.md)
 
+> **YAMLベースのDiscord定期通知Bot** - 自動スレッド作成・スラッシュコマンド対応
+
 A YAML-based Discord periodic notification bot with thread creation and slash command support.
 
 ## Features
@@ -45,23 +47,27 @@ python3 bot.py
 | `/disable` | Disable a task |
 | `/test` | Test run a task |
 
-## YAML Configuration Example
+## YAML Schedule Configuration
 
-```yaml
-tasks:
-  - name: "Task Check"
-    schedule: "hourly"
-    channel: "1475880463800205315"
-    mention: "1475431819565469706"
-    prompt: "🎋 TASK Check"
-    thread: true
-    thread_name: "🔧 {date} Task Check"
-    enabled: true
+The bot reads `config/schedule-tasks.yaml` to define scheduled tasks.
 
-settings:
-  timezone: "Asia/Tokyo"
-  check_interval: 60
-```
+### Task Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Task name (used in `/test` and logs) |
+| `schedule` | string | ✅ | Cron format or `hourly` |
+| `channel` | string | ✅ | Discord channel ID |
+| `mention` | string | ❌ | User/role ID to mention |
+| `prompt` | string | ❌ | Message content |
+| `thread` | boolean | ❌ | Create thread (default: false) |
+| `thread_name` | string | ❌ | Thread name template |
+| `enabled` | boolean | ❌ | Enable/disable task |
+
+### Schedule Format
+
+- **Simple**: `hourly` - Run every hour at minute 0
+- **Cron**: Standard cron format (e.g., `0 9 * * *` for 9:00 daily)
 
 ### Placeholders
 
@@ -69,7 +75,37 @@ settings:
 - `{time}` - Time (HH:MM)
 - `{name}` - Task name
 
-## Task File Structure
+### Example: Task Check (Hourly)
+
+```yaml
+tasks:
+  - name: "タスク確認"
+    schedule: "hourly"
+    channel: "1475880463800205315"
+    mention: "1475431819565469706"
+    prompt: "🎋 TASK確認"
+    thread: true
+    thread_name: "🔧 {date} タスク確認"
+    enabled: true
+
+settings:
+  timezone: "Asia/Tokyo"
+  check_interval: 60
+```
+
+## Error Handling
+
+The bot handles various error types:
+
+- **Rate Limit (429)**: Automatic retry with exponential backoff
+- **Server Error (5xx)**: Automatic retry up to 3 times
+- **Permission Denied**: Logged and skipped
+- **Not Found**: Logged and skipped
+- **Timeout**: Automatic retry
+
+Errors are logged to `logs/error.log`.
+
+## Slash Commands
 
 Each task is stored as an individual YAML file in `config/tasks/`:
 
