@@ -662,8 +662,7 @@ async def cmd_streaks(interaction: discord.Interaction):
 
         embed.add_field(
             name=f"📌 {task_name}",
-            value=f"実行: {total}回 | 成功率: {rate:.0f}%
-最終: {last_str}",
+            value=f"実行: {total}回 | 成功率: {rate:.0f}%\n最終: {last_str}",
             inline=False
         )
 
