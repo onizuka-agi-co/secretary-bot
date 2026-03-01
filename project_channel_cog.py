@@ -80,6 +80,29 @@ class ProjectChannelCog(commands.Cog):
             ephemeral=True,
         )
 
+    @app_commands.command(name="sync-projects", description="全プロジェクトのチャンネルを作成・同期")
+    async def sync_projects(self, interaction: discord.Interaction):
+        """全プロジェクトフォルダのチャンネルを作成（既存はスキップ）"""
+        await interaction.response.defer()
+        
+        from project_watcher import create_all_project_channels
+        
+        results = await create_all_project_channels(
+            self.watcher,
+            github_org="onizuka-agi-co",
+        )
+        
+        created = [name for name, ch in results.items() if ch]
+        skipped = [name for name, ch in results.items() if not ch]
+        
+        msg = f"📂 **プロジェクト同期完了**\n\n"
+        if created:
+            msg += f"✅ 作成: {len(created)}件\n" + "\n".join(f"  • {n}" for n in created) + "\n"
+        if skipped:
+            msg += f"⏭️ スキップ（既存）: {len(skipped)}件\n" + "\n".join(f"  • {n}" for n in skipped)
+        
+        await interaction.followup.send(msg)
+
 
 async def setup(bot: commands.Bot, projects_dir: str, guild_id: int, category_id: int = None):
     """Cogをセットアップ"""

@@ -21,6 +21,7 @@ from discord.ext import commands, tasks
 from discord.errors import HTTPException, Forbidden, NotFound
 import croniter
 from skills_utils import get_all_skills, get_skill_detail, format_skills_list, format_skill_detail
+from project_channel_cog import ProjectChannelCog
 
 # 強制フラッシュ
 sys.stdout.reconfigure(line_buffering=True)
@@ -224,6 +225,20 @@ async def on_ready():
 
     # 定期チェック開始
     schedule_check_loop.start()
+
+    # プロジェクトチャンネル監視Cogを追加
+    PROJECTS_DIR = Path(__file__).parent.parent  # /config/.openclaw/workspace/project
+    PROJECTS_CATEGORY_ID = 1477513680542502994  # 📂 Projects カテゴリ
+    try:
+        await bot.add_cog(ProjectChannelCog(
+            bot=bot,
+            projects_dir=str(PROJECTS_DIR),
+            guild_id=GUILD_ID,
+            category_id=PROJECTS_CATEGORY_ID,
+        ))
+        logger.info(f"ProjectChannelCog loaded. Monitoring: {PROJECTS_DIR}")
+    except Exception as e:
+        logger.error(f"Failed to load ProjectChannelCog: {e}")
 
 
 @tasks.loop(seconds=60)
