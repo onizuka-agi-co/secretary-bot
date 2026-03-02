@@ -1,0 +1,46 @@
+# Skill Shortcuts - スラッシュコマンドからエージェントへ指示を送る
+# /<name> で実行 → チャンネルにスレッド作成 → エージェントにメンション
+
+shortcuts:
+  - name: daily
+    description: "Create daily report using daily-memory skill"
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"  # エージェント
+    prompt: |
+      📝 今日の日報を作成してください。
+      daily-memory skillを使って、今日の日付（YYYY/MM/DD）のフォルダに保存してください。
+      本日の作業内容、進行中のタスク、気づきや学びがあれば含めてください。
+    thread: true
+    thread_name: "📝 {date} 日報"
+
+  - name: idea
+    description: "Request idea proposal"
+    channel: "1475861389984796702"  # #新規企画開発
+    mention: "1475431819565469706"
+    prompt: |
+      💡 新しいアイデア提案をお願いします。
+      ONIZUKAのミッション「AGIの知見をほどき、世界に届ける」に沿ったアイデアを1〜3個提案してください。
+      各アイデアについて、実現可能性と期待される効果も簡潔に説明してください。
+    thread: true
+    thread_name: "💡 {date} アイデア提案"
+
+  - name: task
+    description: "Check and review tasks"
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"
+    prompt: |
+      🎋 TASK確認をお願いします。
+      TASK.mdを読み込んで、未着手タスクがあれば報告してください。
+      進行中のタスクの状況も確認し、ブロッカーがあれば提案してください。
+    thread: true
+    thread_name: "🔧 {date} タスク確認"
+
+  - name: review
+    description: "Review today's progress"
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"
+    prompt: |
+      📊 本日の振り返りをお願いします。
+      今日の作業内容をまとめ、達成したことと課題を整理してください。
+      明日取り組むべきことの提案も含めてください。
+    thread: false

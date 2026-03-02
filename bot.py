@@ -57,6 +57,7 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 TZ = ZoneInfo("Asia/Tokyo")
 GUILD_ID = 1188045372526964796  # ONIZUKA Guild
 TASKS_DIR = Path(__file__).parent / "config" / "tasks"
+SHORTCUTS_FILE = Path(__file__).parent / "config" / "shortcuts.yaml"
 HISTORY_FILE = Path(__file__).parent / "config" / "history.json"
 
 # Bot設定
@@ -150,6 +151,127 @@ def load_schedule() -> dict:
     return {"tasks": tasks, "settings": settings}
 
 
+def load_shortcuts() -> List[dict]:
+    """ショートカット定義を読み込む"""
+    try:
+        if SHORTCUTS_FILE.exists():
+            with open(SHORTCUTS_FILE, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                return data.get("shortcuts", [])
+    except Exception as e:
+        log_error(ErrorTypes.YAML_PARSE, "shortcuts", e, "Failed to load shortcuts")
+    return []
+
+
+async def execute_shortcut(shortcut: dict, interaction: discord.Interaction):
+    """ショートカットを実行"""
+    name = shortcut.get("name", "unknown")
+    channel_id = int(shortcut.get("channel", "0"))
+    mention = shortcut.get("mention", "")
+    prompt = shortcut.get("prompt", "")
+    use_thread = shortcut.get("thread", False)
+    thread_name_template = shortcut.get("thread_name", "🔧 {name}")
+
+    now = datetime.now(TZ)
+
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        await interaction.response.send_message(f"❌ チャンネルが見つかりません: {channel_id}", ephemeral=True)
+        return
+
+    # メッセージ構築
+    message_parts = []
+    if mention:
+        message_parts.append(f"<@{mention}>")
+    if prompt:
+        message_parts.append(prompt.strip())
+    message = "\n".join(message_parts)
+
+    if use_thread:
+        # スレッド名のプレースホルダーを置換
+        thread_name = thread_name_template
+        thread_name = thread_name.replace("{date}", now.strftime("%Y-%m-%d"))
+        thread_name = thread_name.replace("{time}", now.strftime("%H:%M"))
+        thread_name = thread_name.replace("{name}", name)
+
+        try:
+            thread = await channel.create_thread(
+                name=thread_name,
+                type=discord.ChannelType.public_thread,
+                auto_archive_duration=1440
+            )
+            await thread.send(message)
+            logger.info(f"Shortcut executed: /{name} in thread {thread.id}")
+
+            # 実行履歴に記録
+            log_execution(f"shortcut:{name}", channel_id, True, thread.id)
+
+            await interaction.response.send_message(
+                f"🎋 `/{name}` 実行完了\n→ {thread.jump_url}",
+                ephemeral=True
+            )
+        except Exception as e:
+            log_error(ErrorTypes.DISCORD_API, name, e, "Failed to create thread")
+            await interaction.response.send_message(f"❌ エラー: {e}", ephemeral=True)
+    else:
+        try:
+            msg = await channel.send(message)
+            logger.info(f"Shortcut executed: /{name} in channel {channel_id}")
+
+            log_execution(f"shortcut:{name}", channel_id, True)
+
+            await interaction.response.send_message(
+                f"🎋 `/{name}` 実行完了\n→ {msg.jump_url}",
+                ephemeral=True
+            )
+        except Exception as e:
+            log_error(ErrorTypes.DISCORD_API, name, e, "Failed to send message")
+            await interaction.response.send_message(f"❌ エラー: {e}", ephemeral=True)
+
+
+def register_shortcut_commands():
+    """ショートカットコマンドを動的に登録"""
+    shortcuts = load_shortcuts()
+    registered = 0
+
+    for shortcut in shortcuts:
+        name = shortcut.get("name")
+        if not name:
+            continue
+
+        # 既存コマンドと重複チェック
+        existing = bot.tree.get_command(name)
+        if existing:
+            logger.warning(f"Shortcut /{name} conflicts with existing command, skipping")
+            continue
+
+        # コールバック関数を生成（クロージャでshortcutをキャプチャ）
+        async def make_callback(sc):
+            async def callback(interaction: discord.Interaction):
+                await execute_shortcut(sc, interaction)
+            return callback
+
+        callback = asyncio.get_event_loop().run_until_complete(
+            asyncio.coroutine(lambda sc=shortcut: None)()
+        )
+        # 同期的にコールバックを作成
+        async def shortcut_callback(interaction: discord.Interaction, sc=shortcut):
+            await execute_shortcut(sc, interaction)
+
+        command = app_commands.Command(
+            name=name,
+            description=shortcut.get("description", f"Execute {name} shortcut"),
+            callback=shortcut_callback
+        )
+
+        bot.tree.add_command(command)
+        registered += 1
+        logger.debug(f"Registered shortcut command: /{name}")
+
+    logger.info(f"Registered {registered} shortcut commands")
+    return registered
+
+
 def should_execute(task: dict, now: datetime) -> bool:
     """タスクを実行すべきか判定"""
     task_name = task.get("name", "unnamed")
@@ -201,6 +323,9 @@ async def on_ready():
     schedule = load_schedule()
     task_count = len([t for t in schedule.get("tasks", []) if t.get("enabled", True)])
     logger.info(f"有効なタスク数: {task_count}")
+
+    # ショートカットコマンドを登録
+    shortcut_count = register_shortcut_commands()
 
     # スラッシュコマンド同期（Guild固有で即座に反映）
     try:
