@@ -11,3 +11,9 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# s6 service
+supervise/
+.venv/
+uv.lock
+event/
