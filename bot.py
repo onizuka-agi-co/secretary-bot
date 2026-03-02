@@ -266,16 +266,7 @@ def register_shortcut_commands():
             logger.warning(f"Shortcut /{name} conflicts with existing command, skipping")
             continue
 
-        # コールバック関数を生成（クロージャでshortcutをキャプチャ）
-        async def make_callback(sc):
-            async def callback(interaction: discord.Interaction):
-                await execute_shortcut(sc, interaction)
-            return callback
-
-        callback = asyncio.get_event_loop().run_until_complete(
-            asyncio.coroutine(lambda sc=shortcut: None)()
-        )
-        # 同期的にコールバックを作成
+        # クロージャでshortcutをキャプチャしたコールバックを作成
         async def shortcut_callback(interaction: discord.Interaction, sc=shortcut):
             await execute_shortcut(sc, interaction)
 
@@ -287,7 +278,7 @@ def register_shortcut_commands():
 
         bot.tree.add_command(command)
         registered += 1
-        logger.debug(f"Registered shortcut command: /{name}")
+        logger.info(f"Registered shortcut command: /{name}")
 
     logger.info(f"Registered {registered} shortcut commands")
     return registered
