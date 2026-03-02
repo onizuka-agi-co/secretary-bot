@@ -1,0 +1,15 @@
+[project]
+name = "secretary-bot"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "discord.py>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "croniter>=2.0",
+    "pytz>=2024.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
