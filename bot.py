@@ -21,6 +21,7 @@ from discord.ext import commands, tasks
 from discord.errors import HTTPException, Forbidden, NotFound
 import croniter
 from skills_utils import get_all_skills, get_skill_detail, format_skills_list, format_skill_detail
+from directory_watcher import DirectoryWatcher, WatchTarget
 
 # 強制フラッシュ
 sys.stdout.reconfigure(line_buffering=True)
@@ -66,6 +67,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 実行済みタスク管理
 executed_tasks: Dict[str, str] = {}
+
+# ディレクトリウォッチャー
+directory_watcher: Optional[DirectoryWatcher] = None
 
 # エラーログ保存
 error_log_file = Path(__file__).parent / "logs" / "errors.log"
@@ -363,6 +367,43 @@ async def on_ready():
 
     # 定期チェック開始
     schedule_check_loop.start()
+
+    # ディレクトリウォッチャー初期化
+    try:
+        projects_dir = os.getenv("PROJECTS_DIR", "/config/.openclaw/workspace/project")
+        skills_dir = os.getenv("SKILLS_DIR", "/config/.openclaw/workspace/skills")
+        projects_category = os.getenv("PROJECTS_CATEGORY_ID")
+        skills_category = os.getenv("SKILLS_CATEGORY_ID")
+        check_interval = int(os.getenv("CHECK_INTERVAL", "300"))
+
+        targets = [
+            WatchTarget(
+                name="projects",
+                directory=projects_dir,
+                category_id=int(projects_category) if projects_category else None,
+                channel_prefix="📂",
+                github_org="onizuka-agi-co",
+            ),
+            WatchTarget(
+                name="skills",
+                directory=skills_dir,
+                category_id=int(skills_category) if skills_category else None,
+                channel_prefix="🎋",
+                github_org="onizuka-agi-co",
+            ),
+        ]
+
+        global directory_watcher
+        directory_watcher = DirectoryWatcher(
+            bot=bot,
+            targets=targets,
+            guild_id=GUILD_ID,
+            check_interval=check_interval,
+        )
+        bot.loop.create_task(directory_watcher.start())
+        logger.info(f"Directory watcher started: projects={projects_dir}, skills={skills_dir}")
+    except Exception as e:
+        logger.error(f"Failed to initialize directory watcher: {e}")
 
 
 @tasks.loop(seconds=60)
@@ -888,6 +929,100 @@ class SkillsGroup(app_commands.Group):
 
 # コマンドグループを登録
 bot.tree.add_command(SkillsGroup(name="skills", description="スキル管理"))
+
+
+# ディレクトリウォッチャーコマンド
+class WatcherGroup(app_commands.Group):
+    """ディレクトリ監視コマンドグループ"""
+
+    @app_commands.command(name="scan", description="ディレクトリをスキャン")
+    @app_commands.describe(target="監視対象 (projects/skills/all)")
+    async def scan(self, interaction: discord.Interaction, target: str = "all"):
+        """ディレクトリをスキャン"""
+        global directory_watcher
+        if not directory_watcher:
+            await interaction.response.send_message("❌ ディレクトリウォッチャーが初期化されていません", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        if target == "all":
+            for target_name in directory_watcher.targets:
+                await directory_watcher.check_for_new_items(target_name)
+            summary = []
+            for target_name in directory_watcher.targets:
+                items = directory_watcher.known_items.get(target_name, set())
+                summary.append(f"{target_name}: {len(items)}件")
+            await interaction.followup.send(f"🔍 スキャン完了\n" + "\n".join(summary), ephemeral=True)
+        elif target in directory_watcher.targets:
+            await directory_watcher.check_for_new_items(target)
+            items = directory_watcher.known_items.get(target, set())
+            await interaction.followup.send(f"🔍 {target} スキャン完了: {len(items)}件", ephemeral=True)
+        else:
+            await interaction.followup.send(f"❌ 不明なターゲット: {target}", ephemeral=True)
+
+    @app_commands.command(name="sync", description="チャンネルを作成・同期")
+    @app_commands.describe(target="監視対象 (projects/skills/all)")
+    async def sync(self, interaction: discord.Interaction, target: str = "all"):
+        """チャンネルを作成・同期"""
+        global directory_watcher
+        if not directory_watcher:
+            await interaction.response.send_message("❌ ディレクトリウォッチャーが初期化されていません", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        if target == "all":
+            results_summary = []
+            for target_name in directory_watcher.targets:
+                results = await directory_watcher.create_channels_for_all(target_name)
+                created = len([c for c in results.values() if c])
+                skipped = len([c for c in results.values() if not c])
+                results_summary.append(f"{target_name}: 作成 {created}件 / スキップ {skipped}件")
+            await interaction.followup.send("🔄 **全ディレクトリ同期完了**\n\n" + "\n".join(results_summary))
+        elif target in directory_watcher.targets:
+            results = await directory_watcher.create_channels_for_all(target)
+            created = [name for name, ch in results.items() if ch]
+            skipped = [name for name, ch in results.items() if not ch]
+            msg = f"🔄 **{target} 同期完了**\n\n"
+            if created:
+                msg += f"✅ 作成: {len(created)}件\n" + "\n".join(f"  • {n}" for n in created[:10]) + "\n"
+            if skipped:
+                msg += f"⏭️ スキップ: {len(skipped)}件"
+            await interaction.followup.send(msg)
+        else:
+            await interaction.followup.send(f"❌ 不明なターゲット: {target}")
+
+    @app_commands.command(name="list", description="監視中のアイテム一覧")
+    @app_commands.describe(target="監視対象 (projects/skills)")
+    async def list_items(self, interaction: discord.Interaction, target: str):
+        """監視中のアイテム一覧"""
+        global directory_watcher
+        if not directory_watcher:
+            await interaction.response.send_message("❌ ディレクトリウォッチャーが初期化されていません", ephemeral=True)
+            return
+
+        if target not in directory_watcher.targets:
+            await interaction.response.send_message(f"❌ 不明なターゲット: {target}", ephemeral=True)
+            return
+
+        items = sorted(directory_watcher.known_items.get(target, set()))
+        if not items:
+            await interaction.response.send_message(f"📋 {target} は監視中のアイテムがありません", ephemeral=True)
+            return
+
+        color = 0xC41E3A if target == "skills" else 0x4CAF50
+        embed = discord.Embed(
+            title=f"📋 {target} 一覧",
+            description="\n".join(f"• {item}" for item in items[:25]),
+            color=color,
+        )
+        if len(items) > 25:
+            embed.set_footer(text=f"...他 {len(items) - 25}件")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+bot.tree.add_command(WatcherGroup(name="watch", description="ディレクトリ監視"))
 
 
 # Bot起動

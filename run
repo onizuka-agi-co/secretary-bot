@@ -1,4 +1,4 @@
 #!/command/execlineb -P
 cd /config/.openclaw/workspace/project/secretary-bot
 fdmove -c 2 1
-exec /lsiopy/bin/python bot.py
+exec s6-setuidgid abc env UV_CACHE_DIR=/config/.openclaw/workspace/project/secretary-bot/.cache uv run --no-project bot.py
