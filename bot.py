@@ -174,6 +174,9 @@ async def execute_shortcut(shortcut: dict, interaction: discord.Interaction):
 
     now = datetime.now(TZ)
 
+    # スレッド内で実行されたかチェック
+    is_in_thread = interaction.channel.type == discord.ChannelType.public_thread
+
     channel = bot.get_channel(channel_id)
     if not channel:
         await interaction.response.send_message(f"❌ チャンネルが見つかりません: {channel_id}", ephemeral=True)
@@ -187,6 +190,24 @@ async def execute_shortcut(shortcut: dict, interaction: discord.Interaction):
         message_parts.append(prompt.strip())
     message = "\n".join(message_parts)
 
+    # スレッド内で実行された場合は、そのスレッドに直接投稿
+    if is_in_thread:
+        try:
+            msg = await interaction.channel.send(message)
+            logger.info(f"Shortcut executed: /{name} in existing thread {interaction.channel.id}")
+
+            log_execution(f"shortcut:{name}", channel_id, True, interaction.channel.id)
+
+            await interaction.response.send_message(
+                f"🎋 `/{name}` 実行完了",
+                ephemeral=True
+            )
+        except Exception as e:
+            log_error(ErrorTypes.DISCORD_API, name, e, "Failed to send in thread")
+            await interaction.response.send_message(f"❌ エラー: {e}", ephemeral=True)
+        return
+
+    # 通常のチャンネルで実行された場合
     if use_thread:
         # スレッド名のプレースホルダーを置換
         thread_name = thread_name_template
@@ -201,7 +222,7 @@ async def execute_shortcut(shortcut: dict, interaction: discord.Interaction):
                 auto_archive_duration=1440
             )
             await thread.send(message)
-            logger.info(f"Shortcut executed: /{name} in thread {thread.id}")
+            logger.info(f"Shortcut executed: /{name} in new thread {thread.id}")
 
             # 実行履歴に記録
             log_execution(f"shortcut:{name}", channel_id, True, thread.id)
