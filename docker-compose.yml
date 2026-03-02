@@ -1,0 +1,10 @@
+services:
+  secretary-bot:
+    build: .
+    container_name: secretary-bot
+    restart: unless-stopped
+    env_file:
+      - ./config/.env
+    # コード・設定変更時は再ビルド: docker compose up -d --build
+    # volumes:
+    #   - ./logs:/app/logs
