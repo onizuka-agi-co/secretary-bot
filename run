@@ -1,4 +1,4 @@
 #!/command/execlineb -P
 cd /config/.openclaw/workspace/project/secretary-bot
 fdmove -c 2 1
-exec python bot.py
+exec /lsiopy/bin/python bot.py
