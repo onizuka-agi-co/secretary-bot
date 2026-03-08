@@ -31,6 +31,9 @@ prompt: |
   実施内容：
   - 最も優先度の高いタスクを1つ選択
   - 実装を開始し、ステータスを `In progress` に変更
+  - **gh コマンドが使用可能**：
+    - リポジトリ作成: `gh repo create`
+    - PR作成: `gh pr create`
   - 出力：実装内容の進捗報告
 
   ### 🔍 レビューフェーズ
@@ -51,10 +54,9 @@ prompt: |
   - リリース対象の機能を確認
   - 必要なドキュメント更新・告知を作成
   - **gh コマンドが使用可能**：
-    - リポジトリ作成: `gh repo create`
     - GitHub Pages デプロイ: `gh-pages` ブランチへのpush
     - リリース作成: `gh release create`
-    - PR作成・マージ: `gh pr create/merge`
+    - PRマージ: `gh pr merge`
   - 出力：リリース内容のまとめ
 
   ## 日報への記録
