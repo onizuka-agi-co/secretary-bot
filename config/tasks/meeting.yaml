@@ -50,6 +50,11 @@ prompt: |
   実施内容：
   - リリース対象の機能を確認
   - 必要なドキュメント更新・告知を作成
+  - **gh コマンドが使用可能**：
+    - リポジトリ作成: `gh repo create`
+    - GitHub Pages デプロイ: `gh-pages` ブランチへのpush
+    - リリース作成: `gh release create`
+    - PR作成・マージ: `gh pr create/merge`
   - 出力：リリース内容のまとめ
 
   ## 日報への記録
