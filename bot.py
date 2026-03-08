@@ -6,6 +6,7 @@ YAMLベース定期通知Bot - スラッシュコマンド対応
 
 import os
 import sys
+import re
 import yaml
 import json
 import asyncio
@@ -110,6 +111,19 @@ def log_execution(task_name: str, channel_id: int, success: bool, thread_id: int
     }
     history["executions"].append(entry)
     save_history(history)
+
+
+def get_and_increment_counter(task_name: str) -> int:
+    """タスクのカウンターを取得してインクリメント"""
+    history = load_history()
+    if "counters" not in history:
+        history["counters"] = {}
+
+    current = history["counters"].get(task_name, 0)
+    next_value = current + 1
+    history["counters"][task_name] = next_value
+    save_history(history)
+    return next_value
 
 
 
@@ -485,6 +499,11 @@ async def execute_task(task: dict, now: datetime):
         thread_name = thread_name.replace("{date}", now.strftime("%Y-%m-%d"))
         thread_name = thread_name.replace("{time}", now.strftime("%H:%M"))
         thread_name = thread_name.replace("{name}", task_name)
+
+        # {number} と {number:03d} 形式の置換
+        number = get_and_increment_counter(task_name)
+        thread_name = re.sub(r'\{number:0?(\d+)d\}', lambda m: str(number).zfill(int(m.group(1))), thread_name)
+        thread_name = thread_name.replace("{number}", str(number))
 
         # スレッドを作成
         thread = await channel.create_thread(
