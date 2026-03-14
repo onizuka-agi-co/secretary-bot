@@ -30,6 +30,27 @@ tasks:
     prompt: "📊 本日の進捗をまとめてください"
     enabled: true  # スレッドなし
 
+  # 自動コンテンツ生成パイプライン（毎日 09:00）
+  - name: "自動コンテンツ生成パイプライン"
+    schedule: "0 9 * * *"  # 毎日 09:00 JST
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"  # エージェント
+    prompt: "🎨 自動コンテンツ生成パイプラインを実行してください。HF Papersからトップ論文を取得し、nano-banana-2で図解画像を生成して、XとDiscordに投稿してください。"
+    thread: true
+    thread_name: "🎨 {date} 自動コンテンツ生成"
+    enabled: true
+
+  # 週間AGIレポート（毎週月曜日 09:00）
+  - name: "週間AGIレポート"
+    schedule: "0 9 * * 1"  # 毎週月曜日 09:00 JST
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1153319182486741085"  # Maki
+    prompt: "📊 週間AGIレポートを生成してください。過去1週間のGitHub Projectの統計、完了タスク、新規アイデアをまとめて報告してください。"
+    thread: true
+    thread_name: "📊 週間AGIレポート ({date})"
+    task_file: "weekly-report.yaml"  # タスク定義ファイル
+    enabled: true
+
 # 設定
 settings:
   timezone: "Asia/Tokyo"

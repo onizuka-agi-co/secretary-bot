@@ -1,0 +1,61 @@
+# Weekly AGI Report - 週間AGIレポート
+# 毎週月曜日に自動生成
+
+name: "週間AGIレポート"
+description: "過去1週間の活動をまとめたレポートを生成・投稿"
+
+# レポート設定
+report:
+  # 収集するデータ
+  collect:
+    - github_project_stats    # GitHub Projectの統計
+    - memory_summaries        # 日報からの要約
+    - completed_tasks         # 完了タスク一覧
+    - new_ideas               # 新規アイデア
+
+  # レポート構成
+  sections:
+    - name: "📊 週間サマリー"
+      type: "summary"
+      content: |
+        ## 📊 週間サマリー ({start_date} - {end_date})
+
+        ### ✅ 完了タスク
+        {completed_count}件
+
+        ### 🔄 進行中
+        {in_progress_count}件
+
+        ### 📝 新規追加
+        {new_tasks_count}件
+
+    - name: "🎯 ハイライト"
+      type: "highlights"
+      content: |
+        ## 🎯 今週のハイライト
+
+        {highlights}
+
+    - name: "📈 トレンド"
+      type: "trends"
+      content: |
+        ## 📈 注目トピック
+
+        {trending_topics}
+
+    - name: "🔮 次週の予定"
+      type: "next_week"
+      content: |
+        ## 🔮 次週の予定
+
+        {upcoming_tasks}
+
+# 出力先
+output:
+  discord:
+    channel: "1475880463800205315"  # #機能開発室
+    thread: true
+    thread_name: "📊 週間AGIレポート ({date})"
+
+# スケジュール（schedule-tasks.yamlで上書き可能）
+schedule: "0 9 * * 1"  # 毎週月曜日 09:00 JST
