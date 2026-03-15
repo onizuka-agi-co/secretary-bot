@@ -75,6 +75,9 @@ directory_watcher: Optional[DirectoryWatcher] = None
 # エラーログ保存
 error_log_file = Path(__file__).parent / "logs" / "errors.log"
 
+# エラー通知設定
+ERROR_NOTIFICATION = {"enabled": False, "channel": None, "mention": None}
+
 # 履歴管理
 def load_history() -> dict:
     """実行履歴を読み込む"""
@@ -146,6 +149,7 @@ def log_error(error_type: str, task_name: str, error: Exception, context: str = 
 
 def load_schedule() -> dict:
     """tasksディレクトリ内の全YAMLファイルからタスクを読み込む"""
+    global ERROR_NOTIFICATION
     tasks = []
     settings = {"timezone": "Asia/Tokyo", "check_interval": 60}
 
@@ -154,10 +158,21 @@ def load_schedule() -> dict:
             for yaml_file in TASKS_DIR.glob("*.yaml"):
                 try:
                     with open(yaml_file, "r", encoding="utf-8") as f:
-                        task = yaml.safe_load(f)
-                        if task and "name" in task:
-                            tasks.append(task)
-                            logger.debug(f"Loaded task: {task.get('name')} from {yaml_file.name}")
+                        data = yaml.safe_load(f)
+                        if data:
+                            # タスクを追加
+                            if "name" in data:
+                                tasks.append(data)
+                            # 複数タスク形式
+                            if "tasks" in data:
+                                tasks.extend(data["tasks"])
+                            # エラー通知設定
+                            if "error_notification" in data:
+                                ERROR_NOTIFICATION = data["error_notification"]
+                            # グローバル設定
+                            if "settings" in data:
+                                settings.update(data["settings"])
+                            logger.debug(f"Loaded: {yaml_file.name}")
                 except yaml.YAMLError as e:
                     log_error(ErrorTypes.YAML_PARSE, yaml_file.stem, e, "YAML syntax error")
                 except Exception as e:
@@ -433,6 +448,37 @@ async def schedule_check_loop():
             await execute_task_with_retry(task, now)
 
 
+async def send_error_notification(task_name: str, error_type: str, error_msg: str):
+    """エラー通知をDiscordに送信"""
+    if not ERROR_NOTIFICATION.get("enabled"):
+        return
+    
+    try:
+        channel_id = ERROR_NOTIFICATION.get("channel")
+        mention = ERROR_NOTIFICATION.get("mention", "")
+        
+        if not channel_id:
+            return
+        
+        channel = bot.get_channel(int(channel_id))
+        if not channel:
+            return
+        
+        # エラー通知メッセージ
+        msg_parts = []
+        if mention:
+            msg_parts.append(f"<@{mention}>")
+        msg_parts.append(f"⚠️ **エラー通知**")
+        msg_parts.append(f"\n**タスク:** {task_name}")
+        msg_parts.append(f"\n**種別:** {error_type}")
+        msg_parts.append(f"\n**詳細:** {error_msg}")
+        
+        await channel.send("".join(msg_parts))
+        logger.info(f"Error notification sent for task: {task_name}")
+    except Exception as e:
+        logger.error(f"Failed to send error notification: {e}")
+
+
 async def execute_task_with_retry(task: dict, now: datetime, retry_count: int = 0):
     """タスクをリトライ付きで実行"""
     task_name = task.get("name", "unnamed")
@@ -448,27 +494,43 @@ async def execute_task_with_retry(task: dict, now: datetime, retry_count: int = 
                 await asyncio.sleep(retry_after)
                 await execute_task_with_retry(task, now, retry_count + 1)
             else:
+                error_msg = f"Max retries exceeded: {type(e).__name__}: {e}"
                 log_error(ErrorTypes.RATE_LIMIT, task_name, e, "Max retries exceeded")
+                await send_error_notification(task_name, ErrorTypes.RATE_LIMIT, error_msg)
         elif e.status >= 500:  # Server error
             log_error(ErrorTypes.NETWORK, task_name, e, f"Server error, retry: {retry_count}")
             if retry_count < MAX_RETRIES:
                 await asyncio.sleep(RETRY_DELAY * (retry_count + 1))
                 await execute_task_with_retry(task, now, retry_count + 1)
             else:
+                error_msg = f"Max retries exceeded: {type(e).__name__}: {e}"
                 log_error(ErrorTypes.NETWORK, task_name, e, "Max retries exceeded")
+                await send_error_notification(task_name, ErrorTypes.NETWORK, error_msg)
         else:
+            error_msg = f"HTTP {e.status}: {type(e).__name__}: {e}"
             log_error(ErrorTypes.DISCORD_API, task_name, e, f"HTTP {e.status}")
+            await send_error_notification(task_name, ErrorTypes.DISCORD_API, error_msg)
     except Forbidden as e:
+        error_msg = f"Permission denied: {type(e).__name__}: {e}"
         log_error(ErrorTypes.DISCORD_API, task_name, e, "Permission denied")
+        await send_error_notification(task_name, ErrorTypes.DISCORD_API, error_msg)
     except NotFound as e:
+        error_msg = f"Resource not found: {type(e).__name__}: {e}"
         log_error(ErrorTypes.DISCORD_API, task_name, e, "Resource not found")
+        await send_error_notification(task_name, ErrorTypes.DISCORD_API, error_msg)
     except asyncio.TimeoutError as e:
         log_error(ErrorTypes.NETWORK, task_name, e, f"Timeout, retry: {retry_count}")
         if retry_count < MAX_RETRIES:
             await asyncio.sleep(RETRY_DELAY)
             await execute_task_with_retry(task, now, retry_count + 1)
+        else:
+            error_msg = f"Timeout after {retry_count + 1} retries"
+            log_error(ErrorTypes.NETWORK, task_name, e, "Max retries exceeded")
+            await send_error_notification(task_name, ErrorTypes.NETWORK, error_msg)
     except Exception as e:
+        error_msg = f"Unknown error: {type(e).__name__}: {e}"
         log_error(ErrorTypes.UNKNOWN, task_name, e)
+        await send_error_notification(task_name, ErrorTypes.UNKNOWN, error_msg)
 
 
 async def execute_task(task: dict, now: datetime):

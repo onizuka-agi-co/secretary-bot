@@ -51,6 +51,12 @@ tasks:
     task_file: "weekly-report.yaml"  # タスク定義ファイル
     enabled: true
 
+# エラー通知設定
+error_notification:
+  channel: "1475880463800205315"  # #機能開発室
+  mention: "1153319182486741085"  # Maki
+  enabled: true
+
 # 設定
 settings:
   timezone: "Asia/Tokyo"
