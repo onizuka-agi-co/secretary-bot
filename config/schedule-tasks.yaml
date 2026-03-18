@@ -51,6 +51,39 @@ tasks:
     task_file: "weekly-report.yaml"  # タスク定義ファイル
     enabled: true
 
+  # 自動日報生成（毎日 23:00）
+  - name: "自動日報生成"
+    schedule: "0 23 * * *"  # 毎日 23:00 JST
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"  # エージェント
+    prompt: |
+      📝 **自動日報生成**
+
+      今日の日報を生成してください。以下の手順で実施：
+
+      1. **GitHub Projectから完了タスクを取得**
+         - `gh project item-list 1 --owner onizuka-agi-co --format json` を使用
+         - 今日完了したタスクを抽出（status == "Done"）
+
+      2. **日報を生成**
+         - daily-memoryスキルを使用
+         - `uv run skills/daily-memory/scripts/daily_memory.py add` を実行
+         - 完了タスクを --completed に追加
+         - タグに #自動生成 を追加
+
+      3. **ビルド検証**
+         - `cd ~/.openclaw/workspace/memory && npm run docs:build` を実行
+         - エラーがあれば修正
+
+      4. **コミット＆プッシュ**
+         - `uv run skills/daily-memory/scripts/daily_memory.py commit` を実行
+
+      5. **結果を報告**
+         - 生成した日報の内容を要約して報告
+    thread: true
+    thread_name: "📝 {date} 自動日報生成"
+    enabled: true
+
 # エラー通知設定
 error_notification:
   channel: "1475880463800205315"  # #機能開発室
