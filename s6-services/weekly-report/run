@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE_DIR=/config/s6-services/weekly-report
+ENV_FILE="$SERVICE_DIR/config.env"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
+: "${WEEKLY_REPORT_WEBHOOK_URL:?WEEKLY_REPORT_WEBHOOK_URL is required}"
+
+LOG_FILE="/config/.local/state/futodama/weekly-report.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+touch "$LOG_FILE"
+
+exec s6-setuidgid abc env \
+  WEEKLY_REPORT_WEBHOOK_URL="$WEEKLY_REPORT_WEBHOOK_URL" \
+  bash -c '
+    set -euo pipefail
+    log="'"$LOG_FILE"'"
+    exec >>"$log" 2>&1
+
+    # 現在の曜日と時刻を確認
+    DOW=$(date +%u)  # 1=月曜, 7=日曜
+    HOUR=$(date +%H)
+
+    # 日曜21:00かチェック
+    if [ "$DOW" = "7" ] && [ "$HOUR" = "21" ]; then
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Running weekly report..."
+      cd /config/.openclaw/workspace
+      /lsiopy/bin/python3 scripts/weekly_report.py
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Weekly report completed"
+    else
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Not scheduled time (DOW=$DOW, HOUR=$HOUR)"
+    fi
+
+    # 1時間スリープ
+    sleep 3600
+  '
