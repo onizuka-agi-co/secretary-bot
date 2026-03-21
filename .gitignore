@@ -4,6 +4,10 @@ __pycache__/
 *.pyc
 *.log
 
+# Secrets - never commit these
+**/config.env
+*.env.local
+
 # IDE
 .vscode/
 .idea/
