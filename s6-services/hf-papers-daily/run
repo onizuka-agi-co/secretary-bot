@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE_DIR=/config/s6-services/hf-papers-daily
+ENV_FILE="$SERVICE_DIR/config.env"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
+LOG_FILE="/config/.local/state/futodama/hf-papers-daily.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+touch "$LOG_FILE"
+
+exec s6-setuidgid abc env \
+  bash -c '
+    set -euo pipefail
+    log="'"$LOG_FILE"'"
+    exec >>"$log" 2>&1
+
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] HF Papers Daily service started"
+
+    while true; do
+      # 現在の曜日と時刻を確認
+      HOUR=$(date +%H)
+      MIN=$(date +%M)
+
+      # 毎日06:00かチェック
+      if [ "$HOUR" = "06" ] && [ "$MIN" -lt "10" ]; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Running HF Papers daily fetch..."
+
+        cd /config/.openclaw/workspace
+
+        # トップ5論文を取得・保存
+        /lsiopy/bin/python3 skills/hf-papers/scripts/hf_papers.py save \
+          --limit 5 \
+          --output-dir memory/docs/papers \
+          --update-index
+
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] HF Papers daily fetch completed"
+
+        # 1時間スリープ（06:10-07:00は再実行しない）
+        sleep 3600
+      else
+        # 10分ごとにチェック
+        sleep 600
+      fi
+    done
+  '
