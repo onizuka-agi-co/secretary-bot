@@ -1,0 +1,57 @@
+# AGI論文ナレッジベース定期更新自動化（毎日 06:00）
+name: "AGIナレッジベース更新"
+schedule: "0 6 * * *"  # 毎日 06:00 JST
+channel: "1475880463800205315"  # #機能開発室
+mention: "1475431819565469706"  # エージェント
+prompt: |
+  📚 **AGI論文ナレッジベース定期更新**
+
+  **ユーザーの反応は待たず、タスクを完遂すること。**
+
+  ## 実行内容
+
+  以下のパイプラインを順次実行：
+
+  ### 1. HuggingFace Papers 取得
+  ```bash
+  cd /config/.openclaw/workspace
+  uv run skills/hf-papers/scripts/hf_papers.py fetch --top 10 --output memory/docs/papers/collected-$(date +%Y-%m-%d).json
+  ```
+
+  ### 2. arXiv Papers 取得
+  ```bash
+  uv run skills/hf-papers/scripts/arxiv_papers.py fetch --categories cs.AI,cs.LG --max 10 --output memory/docs/papers/arxiv-$(date +%Y-%m-%d).json
+  ```
+
+  ### 3. Knowledge Search インデックス更新
+  ```bash
+  uv run skills/agi-knowledge-search/scripts/index.py --rebuild
+  ```
+
+  ### 4. 日報に記録
+  ```bash
+  uv run skills/daily-memory/scripts/daily_memory.py add \
+    --completed "AGIナレッジベース定期更新" \
+    --notes "取得した論文数とインデックス更新状況を記録" \
+    --commit
+  ```
+
+  ## エラー時の対応
+
+  - 各ステップでエラーが発生した場合はスキップして次に進む
+  - 最終的に全ステップの結果をこのスレッドに報告
+  - 部分的な成功でも日報に記録
+
+  ## 報告フォーマット
+
+  - HF Papers取得数 / arXiv取得数 / インデックス更新結果
+  - 新規追加された論文タイトル（上位5件）
+  - エラーがあれば詳細
+
+thread: true
+thread_name: "📚 {date} ナレッジベース更新"
+enabled: true
+error_notification:
+  enabled: true
+  channel: "1475880463800205315"
+  mention: "1153319182486741085"

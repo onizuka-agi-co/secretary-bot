@@ -30,6 +30,17 @@ tasks:
     prompt: "📊 本日の進捗をまとめてください"
     enabled: true  # スレッドなし
 
+  # AGI論文ナレッジベース定期更新（毎日 06:00）
+  - name: "AGIナレッジベース更新"
+    schedule: "0 6 * * *"  # 毎日 06:00 JST
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"  # エージェント
+    prompt: "📚 AGI論文ナレッジベース定期更新パイプラインを実行してください。HF PapersとarXivから最新論文を取得し、Knowledge Searchのインデックスを更新してください。"
+    thread: true
+    thread_name: "📚 {date} ナレッジベース更新"
+    task_file: "knowledge-base-update.yaml"
+    enabled: true
+
   # 自動コンテンツ生成パイプライン（毎日 09:00）
   # X自動解説Bot（毎日 10:00）
   - name: "X自動解説Bot"
