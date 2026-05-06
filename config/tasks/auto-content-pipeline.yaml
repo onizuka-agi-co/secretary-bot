@@ -1,0 +1,47 @@
+# 自動コンテンツ生成パイプライン（毎日 08:00）
+name: "自動コンテンツ生成"
+schedule: "0 8 * * *"  # 毎日 08:00 JST
+channel: "1475880463800205315"  # #機能開発室
+mention: "1475431819565469706"  # エージェント
+prompt: |
+  🔄 **自動コンテンツ生成パイプライン実行**
+
+  **ユーザーの反応は待たず、タスクを完遂すること。**
+
+  ## 実行内容
+
+  auto_content_pipeline.py を実行して、以下の処理を自動実行：
+
+  1. **HuggingFace Daily Papers** からトップ論文を取得
+  2. **nano-banana-2** で図解画像を生成
+  3. **Knowledge Base** (memory/docs/papers/) に保存
+  4. **X (Twitter)** に投稿（オプション）
+  5. **Discord** に投稿（オプション）
+
+  ## 実行コマンド
+
+  ```bash
+  cd /config/.openclaw/workspace
+  uv run scripts/auto_content_pipeline.py --skip-x --skip-discord --output logs/pipeline-result.json
+  ```
+
+  ## 出力
+
+  実行結果をこのスレッドに報告：
+  - 処理した論文タイトル
+  - 生成された画像URL
+  - Knowledge Baseへの保存パス
+  - エラーがあれば詳細
+
+  ## エラー時の対応
+
+  - エラーが発生した場合は詳細を報告
+  - リトライは自動的に行われる（次回実行時）
+
+thread: true
+thread_name: "🔄 {date} コンテンツ生成"
+enabled: true
+error_notification:
+  enabled: true
+  channel: "1475880463800205315"  # #機能開発室
+  mention: "1153319182486741085"  # Maki

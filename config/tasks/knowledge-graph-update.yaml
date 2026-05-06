@@ -1,0 +1,36 @@
+# AGI Knowledge Graph 自動更新パイプライン（毎日 07:00）
+name: "AGIナレッジグラフ自動更新"
+schedule: "0 7 * * *"  # 毎日 07:00 JST（ナレッジベース更新の1時間後）
+channel: "1475880463800205315"  # #機能開発室
+mention: "1475431819565469706"  # エージェント
+prompt: |
+  🏗️ **AGI Knowledge Graph 自動更新パイプライン**
+
+  **ユーザーの反応は待たず、タスクを完遂すること。**
+
+  ## 実行内容
+
+  ```bash
+  cd /config/.openclaw/workspace/project/agi-knowledge-graph
+  uv run auto_update.py --max 10
+  ```
+
+  ## エラー時の対応
+
+  - HF Papers / arXiv 取得エラーはスキップ
+  - グラフ構築エラーは報告のみ
+  - 部分的な成功でも日報に記録
+
+  ## 報告フォーマット
+
+  - HF Papers取得数 / arXiv取得数 / 新規追加数
+  - 総論文数 / グラフ更新結果
+  - エラーがあれば詳細
+
+thread: true
+thread_name: "🏗️ {date} ナレッジグラフ更新"
+enabled: true
+error_notification:
+  enabled: true
+  channel: "1475880463800205315"
+  mention: "1153319182486741085"

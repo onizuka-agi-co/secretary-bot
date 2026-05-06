@@ -41,6 +41,25 @@ tasks:
     task_file: "knowledge-base-update.yaml"
     enabled: true
 
+  # AGI Knowledge Graph 自動更新（毎日 07:00）
+  - name: "AGIナレッジグラフ自動更新"
+    schedule: "0 7 * * *"  # 毎日 07:00 JST（ナレッジベース更新の1時間後）
+    channel: "1475880463800205315"  # #機能開発室
+    mention: "1475431819565469706"  # エージェント
+    prompt: |
+      🏗️ **AGI Knowledge Graph 自動更新パイプライン**
+
+      **ユーザーの反応は待たず、タスクを完遂すること。**
+
+      ```bash
+      cd /config/.openclaw/workspace/project/agi-knowledge-graph
+      uv run auto_update.py --max 10
+      ```
+    thread: true
+    thread_name: "🏗️ {date} ナレッジグラフ更新"
+    task_file: "knowledge-graph-update.yaml"
+    enabled: true
+
   # 自動コンテンツ生成パイプライン（毎日 09:00）
   # X自動解説Bot（毎日 10:00）
   - name: "X自動解説Bot"
